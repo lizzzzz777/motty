@@ -2,6 +2,7 @@ package sessionimport
 
 import (
 	"archive/zip"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,17 +169,21 @@ func TestWindTermSessionsFileKeepsGroupsAndSkipsOtherProtocols(t *testing.T) {
 func TestElectermBookmarksKeepTheirFoldersAndSkipOtherKinds(t *testing.T) {
 	const export = `{
 	"bookmarkGroups": [
+		{"id": "default", "title": "default", "bookmarkIds": ["free"], "bookmarkGroupIds": ["clients"]},
 		{"id": "clients", "title": "Clients", "bookmarkIds": [], "bookmarkGroupIds": ["acme"]},
 		{"id": "acme", "title": "Acme", "bookmarkIds": ["web"], "bookmarkGroupIds": ["prod"]},
 		{"id": "prod", "title": "Prod", "bookmarkIds": ["db", "tel"], "bookmarkGroupIds": []},
-		{"id": "loop", "title": "Loop", "bookmarkIds": ["box"], "bookmarkGroupIds": ["loop"]},
+		{"id": "ring-a", "title": "RingA", "bookmarkIds": ["box"], "bookmarkGroupIds": ["ring-b"]},
+		{"id": "ring-b", "title": "RingB", "bookmarkIds": [], "bookmarkGroupIds": ["ring-a"]},
 		{"id": "", "title": "nameless", "bookmarkIds": [], "bookmarkGroupIds": []}
 	],
 	"bookmarks": [
-		{"id": "web", "title": "Web", "host": "web.acme.test", "port": 2222, "username": "root", "type": "ssh", "authType": "password", "password": "hunter2"},
-		{"id": "db", "title": "", "host": "db.acme.test", "username": "deploy", "authType": "privateKey"},
+		{"id": "web", "title": "Web", "host": "web.acme.test", "port": "2222", "username": "root", "type": "ssh", "authType": "password", "password": "hunter2"},
+		{"id": "db", "title": "", "host": "db.acme.test", "username": "deploy", "authType": "privateKey", "privateKey": "-----BEGIN KEY-----"},
 		{"id": "tel", "title": "Switch", "host": "sw.lab", "port": 23, "type": "telnet", "username": "admin"},
-		{"id": "box", "title": "Box", "host": "box.lab"},
+		{"id": "box", "title": "Box", "host": "box.lab", "passphrase": "open sesame"},
+		{"id": "free", "title": "Free", "host": "free.lab"},
+		{"id": "bad", "title": "Bad", "host": "has space", "password": "never imported or counted"},
 		{"id": "desk", "title": "Desktop", "host": "win.lab", "port": 3389, "type": "rdp"}
 	]
 }`
@@ -187,7 +192,7 @@ func TestElectermBookmarksKeepTheirFoldersAndSkipOtherKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Entries) != 4 || result.Skipped != 1 || result.Keys != 1 || result.PlainPasswords != 1 {
+	if len(result.Entries) != 5 || result.Skipped != 1 || result.Keys != 1 || result.PlainSecrets != 3 {
 		t.Fatalf("%+v", result)
 	}
 	byName := map[string]Entry{}
@@ -204,16 +209,51 @@ func TestElectermBookmarksKeepTheirFoldersAndSkipOtherKinds(t *testing.T) {
 	if got := byName["Switch"]; got.Protocol != Telnet || got.Port != 23 || got.User != "" || got.Group != "Clients/Acme/Prod" {
 		t.Fatalf("telnet = %+v", got)
 	}
-	// A group that names itself among its children does not make a folder that
-	// runs on for ever.
-	if got := byName["Box"]; got.Group != "Loop" || got.Port != 0 || got.Protocol != SSH {
+	// Two groups that each sit in the other do not make a folder that runs on for
+	// ever.
+	if got := byName["Box"]; got.Group != "RingB/RingA" || got.Port != 0 || got.Protocol != SSH {
 		t.Fatalf("box = %+v", got)
+	}
+	// Electerm's own "default" group holds what was never filed; it is not a folder.
+	if got := byName["Free"]; got.Group != "" {
+		t.Fatalf("free = %+v", got)
 	}
 
 	for _, notAnExport := range []string{`[{"id": "web"}]`, `{}`, `not json`} {
 		if _, err := ParseElecterm(write(t, dir, "other.json", []byte(notAnExport))); err == nil {
 			t.Fatalf("%s was accepted as an export", notAnExport)
 		}
+	}
+	_, err = ParseElecterm(write(t, dir, "array.json", []byte(`[{"id": "web"}]`)))
+	if err == nil || !strings.Contains(err.Error(), "JSON array") {
+		t.Fatalf("an array export was refused with %v", err)
+	}
+}
+
+func TestElectermGroupNestingIsBoundedAndKeepsTheInnermostFolders(t *testing.T) {
+	const levels = 5000
+	groups := make([]string, 0, levels)
+	for level := range levels {
+		members, children := `""`, `""`
+		if level == levels-1 {
+			members = `"deep"`
+		} else {
+			children = fmt.Sprintf(`"g%d"`, level+1)
+		}
+		groups = append(groups, fmt.Sprintf(`{"id": "g%d", "title": "G%d", "bookmarkIds": [%s], "bookmarkGroupIds": [%s]}`,
+			level, level, members, children))
+	}
+	export := `{"bookmarkGroups": [` + strings.Join(groups, ",") + `], "bookmarks": [{"id": "deep", "title": "Deep", "host": "deep.lab"}]}`
+	result, err := Parse(Electerm, []string{write(t, t.TempDir(), "deep.json", []byte(export))})
+	if err != nil || len(result.Entries) != 1 {
+		t.Fatalf("%v %+v", err, result)
+	}
+	folders := strings.Split(result.Entries[0].Group, "/")
+	if len(folders) != maxGroupDepth || folders[len(folders)-1] != fmt.Sprintf("G%d", levels-1) {
+		t.Fatalf("%d folders, last %q", len(folders), folders[len(folders)-1])
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "shortened") {
+		t.Fatalf("warnings = %q", result.Warnings)
 	}
 }
 

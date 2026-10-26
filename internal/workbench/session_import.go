@@ -91,10 +91,10 @@ func (state *State) importSessions(client sessionimport.Client) {
 		plan.warnings = append(plan.warnings, fmt.Sprintf(m.ImportWarningSkippedFmt, result.Skipped))
 	}
 	plan.warnings = append(plan.warnings, result.Warnings...)
-	// A file that names passwords in the clear is a file to delete, not one whose
-	// encryption scheme kept them back, so it is said in its own words.
-	if result.PlainPasswords > 0 {
-		plan.warnings = append(plan.warnings, fmt.Sprintf(m.ImportWarningCleartextFmt, result.PlainPasswords))
+	// A file that holds passwords or keys in the clear is a file to delete, not
+	// one whose encryption scheme kept them back, so it is said in its own words.
+	if result.PlainSecrets > 0 {
+		plan.warnings = append(plan.warnings, fmt.Sprintf(m.ImportWarningCleartextFmt, result.PlainSecrets))
 	} else {
 		plan.warnings = append(plan.warnings, m.ImportWarningPasswords)
 	}

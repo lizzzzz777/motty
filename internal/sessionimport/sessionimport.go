@@ -35,6 +35,10 @@ const (
 	maxArchiveSize = 64 << 20
 	maxNameLength  = 200
 	maxGroupLength = 512
+	// maxGroupDepth is how many folders of a nested group tree are followed; real
+	// bookmark trees are a few levels deep, so only a damaged or hostile file
+	// reaches it.
+	maxGroupDepth = 32
 )
 
 // Protocol is how a session is reached.
@@ -70,11 +74,11 @@ type Result struct {
 	Skipped int
 	// Keys counts sessions that name a private key file, which was not imported.
 	Keys int
-	// PlainPasswords counts sessions whose file carried a password in readable
-	// text (Electerm writes one), so the user can be told to delete the file.
-	// None of them were imported.
-	PlainPasswords int
-	Warnings       []string
+	// PlainSecrets counts imported sessions whose file carried a password, key
+	// passphrase or private key in readable text (Electerm writes them), so the
+	// user can be told to delete the file. None of them were imported.
+	PlainSecrets int
+	Warnings     []string
 }
 
 func (result *Result) warn(format string, args ...any) {
@@ -120,7 +124,7 @@ func (result *Result) merge(other Result) {
 	}
 	result.Skipped += other.Skipped
 	result.Keys += other.Keys
-	result.PlainPasswords += other.PlainPasswords
+	result.PlainSecrets += other.PlainSecrets
 	for _, warning := range other.Warnings {
 		result.warn("%s", warning)
 	}
@@ -682,16 +686,33 @@ type electermExport struct {
 }
 
 type electermBookmark struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"username"`
-	Type     string `json:"type"`
-	AuthType string `json:"authType"`
-	// Password is read only to count what the export left in the clear; it is
-	// never put into an entry.
-	Password string `json:"password"`
+	ID       string       `json:"id"`
+	Title    string       `json:"title"`
+	Host     string       `json:"host"`
+	Port     electermPort `json:"port"`
+	User     string       `json:"username"`
+	Type     string       `json:"type"`
+	AuthType string       `json:"authType"`
+	// Password, Passphrase and PrivateKey are read only to count what the export
+	// left in the clear; they are never put into an entry.
+	Password   string `json:"password"`
+	Passphrase string `json:"passphrase"`
+	PrivateKey string `json:"privateKey"`
+}
+
+// electermPort is a port that Electerm writes as a number but that an edited or
+// older export may hold as text. Anything that is not a port reads as 0, "the
+// default", rather than failing the whole file.
+type electermPort int
+
+func (port *electermPort) UnmarshalJSON(data []byte) error {
+	text := strings.Trim(strings.TrimSpace(string(data)), `"`)
+	if value, err := strconv.Atoi(text); err == nil {
+		*port = electermPort(value)
+	} else {
+		*port = 0
+	}
+	return nil
 }
 
 type electermGroup struct {
@@ -700,6 +721,12 @@ type electermGroup struct {
 	BookmarkIDs      []string `json:"bookmarkIds"`
 	BookmarkGroupIDs []string `json:"bookmarkGroupIds"`
 }
+
+// electermDefaultGroup is the id of the group Electerm creates for itself and
+// puts every bookmark in that was never filed anywhere. Its title is the word
+// "default" in the interface language, so it is told apart by id, and it is not a
+// folder the user made.
+const electermDefaultGroup = "default"
 
 // ParseElecterm reads an Electerm bookmarks export (a .json file). Its groups
 // nest, and a session is SSH unless Type says otherwise.
@@ -710,7 +737,7 @@ func ParseElecterm(path string) (Result, error) {
 	}
 	var export electermExport
 	if err := json.Unmarshal([]byte(text), &export); err != nil {
-		return Result{}, errors.New("not an Electerm bookmarks export: it is not a JSON object of bookmarks")
+		return Result{}, fmt.Errorf("not an Electerm bookmarks export: %s", electermJSONProblem(err))
 	}
 	if export.Bookmarks == nil && export.BookmarkGroups == nil {
 		return Result{}, errors.New("not an Electerm bookmarks export: it has neither bookmarks nor groups")
@@ -718,6 +745,7 @@ func ParseElecterm(path string) (Result, error) {
 	var result Result
 	tree := newElectermTree(export)
 	source := filepath.Base(path)
+	shortened := false
 	for _, bookmark := range export.Bookmarks {
 		kind := SSH
 		switch strings.ToLower(bookmark.Type) {
@@ -728,11 +756,12 @@ func ParseElecterm(path string) (Result, error) {
 			result.Skipped++
 			continue
 		}
+		if len(result.Entries) >= MaxEntries {
+			result.warn("%s: more than %d sessions; the rest were not read", source, MaxEntries)
+			break
+		}
 		if strings.EqualFold(bookmark.AuthType, "privateKey") {
 			result.Keys++
-		}
-		if bookmark.Password != "" {
-			result.PlainPasswords++
 		}
 		user := bookmark.User
 		if kind == Telnet {
@@ -740,14 +769,36 @@ func ParseElecterm(path string) (Result, error) {
 		}
 		group := ""
 		if owner, ok := tree.owner[bookmark.ID]; ok {
-			group = tree.groupPath(owner)
+			var cut bool
+			group, cut = tree.groupPath(owner)
+			shortened = shortened || cut
 		}
+		before := len(result.Entries)
 		result.add(Entry{
 			Name: bookmark.Title, Group: group, Protocol: kind,
-			Host: bookmark.Host, Port: bookmark.Port, User: user, Source: source,
+			Host: bookmark.Host, Port: int(bookmark.Port), User: user, Source: source,
 		})
+		if len(result.Entries) > before && (bookmark.Password != "" || bookmark.Passphrase != "" || bookmark.PrivateKey != "") {
+			result.PlainSecrets++
+		}
+	}
+	if shortened {
+		result.warn("%s: folders nested more than %d levels deep were shortened", source, maxGroupDepth)
 	}
 	return result, nil
+}
+
+// electermJSONProblem says what is wrong with a file that is not an Electerm
+// export, in words that name the JSON rather than a Go type.
+func electermJSONProblem(err error) string {
+	var wrong *json.UnmarshalTypeError
+	if errors.As(err, &wrong) {
+		if wrong.Field == "" {
+			return "it is a JSON " + wrong.Value + ", not an object of bookmarks"
+		}
+		return fmt.Sprintf("%q holds a JSON %s where a %s was expected", wrong.Field, wrong.Value, wrong.Type.Kind())
+	}
+	return err.Error()
 }
 
 // electermTree answers the two questions the flat export cannot: which group a
@@ -756,7 +807,6 @@ type electermTree struct {
 	groups map[string]electermGroup
 	parent map[string]string // group id -> the id of the group it sits in
 	owner  map[string]string // bookmark id -> the id of the group holding it
-	folder map[string]string // group id -> its folder, once worked out
 }
 
 func newElectermTree(export electermExport) *electermTree {
@@ -764,7 +814,6 @@ func newElectermTree(export electermExport) *electermTree {
 		groups: make(map[string]electermGroup, len(export.BookmarkGroups)),
 		parent: map[string]string{},
 		owner:  map[string]string{},
-		folder: map[string]string{},
 	}
 	for _, group := range export.BookmarkGroups {
 		if _, seen := tree.groups[group.ID]; !seen && group.ID != "" {
@@ -789,33 +838,36 @@ func newElectermTree(export electermExport) *electermTree {
 }
 
 // groupPath is the folder a group sits in followed by its own title, joined with
-// "/" the way the other imports join nested folders. A group that is its own
-// ancestor, as a damaged file can make it, contributes its title once.
-func (tree *electermTree) groupPath(id string) string {
-	if path, done := tree.folder[id]; done {
-		return path
-	}
-	self, ok := tree.groups[id]
-	if !ok {
-		return ""
-	}
-	var trail []string
-	seen := map[string]bool{id: true}
-	for above, exists := tree.parent[id]; exists && !seen[above]; above, exists = tree.parent[above] {
-		seen[above] = true
-		group, known := tree.groups[above]
-		if !known {
+// "/" the way the other imports join nested folders, and whether the path had to
+// be cut at maxGroupDepth levels (the innermost ones are kept). A group that is
+// its own ancestor, as a damaged file can make it, stops the climb where it
+// would come round to itself. Electerm's own default group is not a folder.
+func (tree *electermTree) groupPath(id string) (string, bool) {
+	var ids []string
+	cut := false
+	for current := id; ; {
+		if _, known := tree.groups[current]; !known || slices.Contains(ids, current) {
 			break
 		}
-		if title := clean(group.Title, maxNameLength); title != "" {
-			trail = append(trail, title)
+		if len(ids) == maxGroupDepth {
+			cut = true
+			break
+		}
+		ids = append(ids, current)
+		above, nested := tree.parent[current]
+		if !nested {
+			break
+		}
+		current = above
+	}
+	titles := make([]string, 0, len(ids))
+	for _, groupID := range slices.Backward(ids) {
+		if groupID == electermDefaultGroup {
+			continue
+		}
+		if title := clean(tree.groups[groupID].Title, maxNameLength); title != "" {
+			titles = append(titles, title)
 		}
 	}
-	slices.Reverse(trail)
-	if title := clean(self.Title, maxNameLength); title != "" {
-		trail = append(trail, title)
-	}
-	path := strings.Join(trail, "/")
-	tree.folder[id] = path
-	return path
+	return strings.Join(titles, "/"), cut
 }

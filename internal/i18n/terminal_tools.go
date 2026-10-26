@@ -140,7 +140,7 @@ type ToolsMessages struct {
 	ImportWarningKeysFmt      string
 	ImportWarningSkippedFmt   string
 	ImportWarningPasswords    string
-	ImportWarningCleartextFmt string // sessions whose file held readable passwords
+	ImportWarningCleartextFmt string // sessions whose file held readable passwords or keys
 
 	// Broadcast input.
 	BroadcastStart            string
@@ -650,7 +650,7 @@ var englishTools = ToolsMessages{
 	ImportWarningKeysFmt:      "%d sessions use a private key file. Keys are not imported; add them under Keychain.",
 	ImportWarningSkippedFmt:   "%d sessions are of a kind that is not imported (remote desktop, file transfer, serial ports from this client…) and were skipped.",
 	ImportWarningPasswords:    "Saved passwords are not imported: each program encrypts them its own way.",
-	ImportWarningCleartextFmt: "%d sessions keep their password in this file in clear text. It was not imported; delete the file when you are done.",
+	ImportWarningCleartextFmt: "%d sessions keep a password or private key in this file in clear text. None of it was imported; delete the file when you are done.",
 
 	BroadcastStart:            "Type into every pane of this tab",
 	BroadcastStop:             "Stop typing into every pane",
@@ -1156,7 +1156,7 @@ var chineseTools = ToolsMessages{
 	ImportWarningKeysFmt:      "有 %d 个会话使用私钥文件。密钥不会被导入，请在“密钥”页面添加。",
 	ImportWarningSkippedFmt:   "有 %d 个会话的类型不支持导入（远程桌面、文件传输、该软件的串口等），已跳过。",
 	ImportWarningPasswords:    "不会导入已保存的密码：各个软件都用自己的方式加密了它们。",
-	ImportWarningCleartextFmt: "有 %d 个会话在此文件里以明文保存了密码。这些密码没有被导入；导入完成后请删除该文件。",
+	ImportWarningCleartextFmt: "有 %d 个会话在此文件里以明文保存了密码或私钥。这些内容没有被导入；导入完成后请删除该文件。",
 
 	BroadcastStart:            "同时输入到本标签页的所有窗格",
 	BroadcastStop:             "停止同时输入",
