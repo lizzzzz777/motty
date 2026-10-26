@@ -84,10 +84,10 @@ A host can also forward the local ssh-agent to its shells, per host and off by
 default.
 
 Hosts can be grouped, tagged, searched and imported from OpenSSH config, PuTTY,
-Xshell or MobaXterm. TOTP/HOTP seeds can be stored in the vault and filled
-automatically. Saved passwords and key passphrases go into an AES-256-GCM vault;
-the vault key lives in the system secret store or behind an Argon2id master
-password.
+Xshell, MobaXterm, WindTerm or Electerm. TOTP/HOTP seeds can be stored in the
+vault and filled automatically. Saved passwords and key passphrases go into an
+AES-256-GCM vault; the vault key lives in the system secret store or behind an
+Argon2id master password.
 
 ### 🗂 Files without another app
 

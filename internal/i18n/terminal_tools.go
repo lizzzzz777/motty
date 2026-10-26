@@ -130,16 +130,17 @@ type ToolsMessages struct {
 	SearchEmptyFmt    string
 
 	// Importing sessions from other clients.
-	ImportSessions          string
-	ImportChooserTitle      string
-	ImportChooserBody       string
-	ImportPickerFmt         string // the client's name
-	ImportCanceled          string
-	ImportFailedFmt         string
-	ImportSummaryFmt        string // hosts, client, duplicates
-	ImportWarningKeysFmt    string
-	ImportWarningSkippedFmt string
-	ImportWarningPasswords  string
+	ImportSessions            string
+	ImportChooserTitle        string
+	ImportChooserBody         string
+	ImportPickerFmt           string // the client's name
+	ImportCanceled            string
+	ImportFailedFmt           string
+	ImportSummaryFmt          string // hosts, client, duplicates
+	ImportWarningKeysFmt      string
+	ImportWarningSkippedFmt   string
+	ImportWarningPasswords    string
+	ImportWarningCleartextFmt string // sessions whose file held readable passwords
 
 	// Broadcast input.
 	BroadcastStart            string
@@ -639,16 +640,17 @@ var englishTools = ToolsMessages{
 	SearchTitle:       "Search results",
 	SearchEmptyFmt:    "No setting matches “%s”.",
 
-	ImportSessions:          "Import from",
-	ImportChooserTitle:      "Import sessions",
-	ImportChooserBody:       "Choose a client, then pick its saved session files.",
-	ImportPickerFmt:         "Import %s sessions",
-	ImportCanceled:          "Import canceled.",
-	ImportFailedFmt:         "Could not import: %v",
-	ImportSummaryFmt:        "Imported %d hosts from %s; skipped %d already saved.",
-	ImportWarningKeysFmt:    "%d sessions use a private key file. Keys are not imported; add them under Keychain.",
-	ImportWarningSkippedFmt: "%d sessions are of a kind that is not imported (remote desktop, file transfer, serial ports from this client…) and were skipped.",
-	ImportWarningPasswords:  "Saved passwords are not imported: each program encrypts them its own way.",
+	ImportSessions:            "Import from",
+	ImportChooserTitle:        "Import sessions",
+	ImportChooserBody:         "Choose a client, then pick its saved session files.",
+	ImportPickerFmt:           "Import %s sessions",
+	ImportCanceled:            "Import canceled.",
+	ImportFailedFmt:           "Could not import: %v",
+	ImportSummaryFmt:          "Imported %d hosts from %s; skipped %d already saved.",
+	ImportWarningKeysFmt:      "%d sessions use a private key file. Keys are not imported; add them under Keychain.",
+	ImportWarningSkippedFmt:   "%d sessions are of a kind that is not imported (remote desktop, file transfer, serial ports from this client…) and were skipped.",
+	ImportWarningPasswords:    "Saved passwords are not imported: each program encrypts them its own way.",
+	ImportWarningCleartextFmt: "%d sessions keep their password in this file in clear text. It was not imported; delete the file when you are done.",
 
 	BroadcastStart:            "Type into every pane of this tab",
 	BroadcastStop:             "Stop typing into every pane",
@@ -1144,16 +1146,17 @@ var chineseTools = ToolsMessages{
 	SearchTitle:       "搜索结果",
 	SearchEmptyFmt:    "没有匹配“%s”的设置。",
 
-	ImportSessions:          "从其他软件导入",
-	ImportChooserTitle:      "导入会话",
-	ImportChooserBody:       "选择导入来源，再选取它保存会话的文件。",
-	ImportPickerFmt:         "导入 %s 会话",
-	ImportCanceled:          "已取消导入。",
-	ImportFailedFmt:         "无法导入：%v",
-	ImportSummaryFmt:        "已从 %[2]s 导入 %[1]d 台主机；跳过 %[3]d 台已保存的主机。",
-	ImportWarningKeysFmt:    "有 %d 个会话使用私钥文件。密钥不会被导入，请在“密钥”页面添加。",
-	ImportWarningSkippedFmt: "有 %d 个会话的类型不支持导入（远程桌面、文件传输、该软件的串口等），已跳过。",
-	ImportWarningPasswords:  "不会导入已保存的密码：各个软件都用自己的方式加密了它们。",
+	ImportSessions:            "从其他软件导入",
+	ImportChooserTitle:        "导入会话",
+	ImportChooserBody:         "选择导入来源，再选取它保存会话的文件。",
+	ImportPickerFmt:           "导入 %s 会话",
+	ImportCanceled:            "已取消导入。",
+	ImportFailedFmt:           "无法导入：%v",
+	ImportSummaryFmt:          "已从 %[2]s 导入 %[1]d 台主机；跳过 %[3]d 台已保存的主机。",
+	ImportWarningKeysFmt:      "有 %d 个会话使用私钥文件。密钥不会被导入，请在“密钥”页面添加。",
+	ImportWarningSkippedFmt:   "有 %d 个会话的类型不支持导入（远程桌面、文件传输、该软件的串口等），已跳过。",
+	ImportWarningPasswords:    "不会导入已保存的密码：各个软件都用自己的方式加密了它们。",
+	ImportWarningCleartextFmt: "有 %d 个会话在此文件里以明文保存了密码。这些密码没有被导入；导入完成后请删除该文件。",
 
 	BroadcastStart:            "同时输入到本标签页的所有窗格",
 	BroadcastStop:             "停止同时输入",

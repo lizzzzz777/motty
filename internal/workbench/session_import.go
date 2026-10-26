@@ -12,9 +12,10 @@ import (
 	"motty/internal/sshconfig"
 )
 
-// Importing the saved sessions of PuTTY, Xshell, MobaXterm and WindTerm. The files are read
-// by internal/sessionimport; this file picks them, turns their sessions into
-// hosts and shows what came of it in the same result dialog as an OpenSSH config.
+// Importing the saved sessions of PuTTY, Xshell, MobaXterm, WindTerm and
+// Electerm. The files are read by internal/sessionimport; this file picks them,
+// turns their sessions into hosts and shows what came of it in the same result
+// dialog as an OpenSSH config.
 
 // sessionImportHits is the place of the controls this file paints.
 var sessionImportHits = tree.Feature("session-import")
@@ -28,6 +29,7 @@ var (
 	hitImportSessionsClose   = tree.ID(sessionImportHits, "import-sessions-close")
 	hitImportSessionsDismiss = tree.ID(sessionImportHits, "import-sessions-dismiss")
 	hitImportWindTerm        = tree.ID(sessionImportHits, "import-wind-term")
+	hitImportElecterm        = tree.ID(sessionImportHits, "import-electerm")
 )
 
 func importClientName(client sessionimport.Client) string {
@@ -38,6 +40,8 @@ func importClientName(client sessionimport.Client) string {
 		return "Xshell"
 	case sessionimport.WindTerm:
 		return "WindTerm"
+	case sessionimport.Electerm:
+		return "Electerm"
 	}
 	return "MobaXterm"
 }
@@ -52,6 +56,8 @@ func (state *State) clickImportSessions(id ui.ID) {
 		state.importSessions(sessionimport.MobaXterm)
 	case hitImportWindTerm:
 		state.importSessions(sessionimport.WindTerm)
+	case hitImportElecterm:
+		state.importSessions(sessionimport.Electerm)
 	case hitImportSessionsCancel, hitImportSessionsClose, hitImportSessionsDismiss:
 		state.modal = modalNone
 	}
@@ -85,7 +91,13 @@ func (state *State) importSessions(client sessionimport.Client) {
 		plan.warnings = append(plan.warnings, fmt.Sprintf(m.ImportWarningSkippedFmt, result.Skipped))
 	}
 	plan.warnings = append(plan.warnings, result.Warnings...)
-	plan.warnings = append(plan.warnings, m.ImportWarningPasswords)
+	// A file that names passwords in the clear is a file to delete, not one whose
+	// encryption scheme kept them back, so it is said in its own words.
+	if result.PlainPasswords > 0 {
+		plan.warnings = append(plan.warnings, fmt.Sprintf(m.ImportWarningCleartextFmt, result.PlainPasswords))
+	} else {
+		plan.warnings = append(plan.warnings, m.ImportWarningPasswords)
+	}
 	summary := fmt.Sprintf(m.ImportSummaryFmt, len(plan.hosts), importClientName(client), plan.duplicateHosts)
 	state.applyHostImportSummary(plan, summary)
 }
@@ -131,6 +143,7 @@ func (state *State) paintImportSessionsDialog(canvas *ui.Canvas, viewport ui.Rec
 		{hitImportXshell, "Xshell"},
 		{hitImportMobaXterm, "MobaXterm"},
 		{hitImportWindTerm, "WindTerm"},
+		{hitImportElecterm, "Electerm"},
 	}
 	const columns = 2
 	rowHeight := components.BeginButton(nil, theme, ui.ID{}, ui.Rect{}).Large().BoundsHeight()

@@ -1,11 +1,13 @@
-// Package sessionimport reads the saved sessions of other SSH clients, PuTTY,
-// Xshell and MobaXterm, into the host fields Motty keeps. It reads files the
-// user chose and never executes, resolves or contacts anything in them.
+// Package sessionimport reads the saved sessions of other clients, PuTTY,
+// Xshell, MobaXterm, WindTerm and Electerm, into the host fields Motty keeps. It
+// reads files the user chose and never executes, resolves or contacts anything
+// in them.
 //
 // Only what a connection needs is taken: a name, a folder, an address, a port
-// and a user. Passwords are never imported: every one of these clients stores
-// them encrypted with a scheme of its own, and a key file path in a session is
-// reported rather than followed, since each client has its own key format.
+// and a user. Passwords are never imported, whether a client encrypted them with
+// a scheme of its own or, as Electerm does, wrote them into the file in the
+// clear, and a key file path in a session is reported rather than followed,
+// since each client has its own key format.
 package sessionimport
 
 import (
@@ -18,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -31,6 +34,7 @@ const (
 	MaxEntries     = 5000
 	maxArchiveSize = 64 << 20
 	maxNameLength  = 200
+	maxGroupLength = 512
 )
 
 // Protocol is how a session is reached.
@@ -65,8 +69,12 @@ type Result struct {
 	// and the serial ports of clients whose serial settings are not read).
 	Skipped int
 	// Keys counts sessions that name a private key file, which was not imported.
-	Keys     int
-	Warnings []string
+	Keys int
+	// PlainPasswords counts sessions whose file carried a password in readable
+	// text (Electerm writes one), so the user can be told to delete the file.
+	// None of them were imported.
+	PlainPasswords int
+	Warnings       []string
 }
 
 func (result *Result) warn(format string, args ...any) {
@@ -81,6 +89,7 @@ func (result *Result) add(entry Entry) {
 		return
 	}
 	entry.Name = clean(entry.Name, maxNameLength)
+	entry.Group = clean(entry.Group, maxGroupLength)
 	entry.Host = clean(entry.Host, 255)
 	entry.User = clean(entry.User, 128)
 	if entry.Name == "" {
@@ -111,6 +120,7 @@ func (result *Result) merge(other Result) {
 	}
 	result.Skipped += other.Skipped
 	result.Keys += other.Keys
+	result.PlainPasswords += other.PlainPasswords
 	for _, warning := range other.Warnings {
 		result.warn("%s", warning)
 	}
@@ -259,6 +269,8 @@ func Parse(client Client, paths []string) (Result, error) {
 			part, err = ParseMobaXterm(path)
 		case WindTerm:
 			part, err = ParseWindTerm(path)
+		case Electerm:
+			part, err = ParseElecterm(path)
 		default:
 			err = fmt.Errorf("unknown client %d", client)
 		}
@@ -285,6 +297,7 @@ const (
 	Xshell
 	MobaXterm
 	WindTerm
+	Electerm
 )
 
 // ---- PuTTY ----
@@ -654,4 +667,155 @@ func ParseWindTerm(path string) (Result, error) {
 		})
 	}
 	return result, nil
+}
+
+// ---- Electerm ----
+
+// electermExport is what Electerm writes when its bookmarks are exported: a flat
+// list of bookmarks and a flat list of groups, each naming the other by id. A
+// group names the groups inside it (BookmarkGroupIDs) and the bookmarks inside it
+// (BookmarkIDs), so the tree is rebuilt from those ids; Level only says how deep
+// a group is and is not trusted.
+type electermExport struct {
+	Bookmarks      []electermBookmark `json:"bookmarks"`
+	BookmarkGroups []electermGroup    `json:"bookmarkGroups"`
+}
+
+type electermBookmark struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"username"`
+	Type     string `json:"type"`
+	AuthType string `json:"authType"`
+	// Password is read only to count what the export left in the clear; it is
+	// never put into an entry.
+	Password string `json:"password"`
+}
+
+type electermGroup struct {
+	ID               string   `json:"id"`
+	Title            string   `json:"title"`
+	BookmarkIDs      []string `json:"bookmarkIds"`
+	BookmarkGroupIDs []string `json:"bookmarkGroupIds"`
+}
+
+// ParseElecterm reads an Electerm bookmarks export (a .json file). Its groups
+// nest, and a session is SSH unless Type says otherwise.
+func ParseElecterm(path string) (Result, error) {
+	text, err := readFile(path)
+	if err != nil {
+		return Result{}, err
+	}
+	var export electermExport
+	if err := json.Unmarshal([]byte(text), &export); err != nil {
+		return Result{}, errors.New("not an Electerm bookmarks export: it is not a JSON object of bookmarks")
+	}
+	if export.Bookmarks == nil && export.BookmarkGroups == nil {
+		return Result{}, errors.New("not an Electerm bookmarks export: it has neither bookmarks nor groups")
+	}
+	var result Result
+	tree := newElectermTree(export)
+	source := filepath.Base(path)
+	for _, bookmark := range export.Bookmarks {
+		kind := SSH
+		switch strings.ToLower(bookmark.Type) {
+		case "", "ssh":
+		case "telnet":
+			kind = Telnet
+		default:
+			result.Skipped++
+			continue
+		}
+		if strings.EqualFold(bookmark.AuthType, "privateKey") {
+			result.Keys++
+		}
+		if bookmark.Password != "" {
+			result.PlainPasswords++
+		}
+		user := bookmark.User
+		if kind == Telnet {
+			user = ""
+		}
+		group := ""
+		if owner, ok := tree.owner[bookmark.ID]; ok {
+			group = tree.groupPath(owner)
+		}
+		result.add(Entry{
+			Name: bookmark.Title, Group: group, Protocol: kind,
+			Host: bookmark.Host, Port: bookmark.Port, User: user, Source: source,
+		})
+	}
+	return result, nil
+}
+
+// electermTree answers the two questions the flat export cannot: which group a
+// bookmark is in, and where that group sits.
+type electermTree struct {
+	groups map[string]electermGroup
+	parent map[string]string // group id -> the id of the group it sits in
+	owner  map[string]string // bookmark id -> the id of the group holding it
+	folder map[string]string // group id -> its folder, once worked out
+}
+
+func newElectermTree(export electermExport) *electermTree {
+	tree := &electermTree{
+		groups: make(map[string]electermGroup, len(export.BookmarkGroups)),
+		parent: map[string]string{},
+		owner:  map[string]string{},
+		folder: map[string]string{},
+	}
+	for _, group := range export.BookmarkGroups {
+		if _, seen := tree.groups[group.ID]; !seen && group.ID != "" {
+			tree.groups[group.ID] = group
+		}
+	}
+	// The first group that names something owns it, so a bookmark or group listed
+	// twice still lands in one folder.
+	for _, group := range export.BookmarkGroups {
+		for _, id := range group.BookmarkGroupIDs {
+			if _, seen := tree.parent[id]; !seen && id != "" && id != group.ID {
+				tree.parent[id] = group.ID
+			}
+		}
+		for _, id := range group.BookmarkIDs {
+			if _, seen := tree.owner[id]; !seen && id != "" {
+				tree.owner[id] = group.ID
+			}
+		}
+	}
+	return tree
+}
+
+// groupPath is the folder a group sits in followed by its own title, joined with
+// "/" the way the other imports join nested folders. A group that is its own
+// ancestor, as a damaged file can make it, contributes its title once.
+func (tree *electermTree) groupPath(id string) string {
+	if path, done := tree.folder[id]; done {
+		return path
+	}
+	self, ok := tree.groups[id]
+	if !ok {
+		return ""
+	}
+	var trail []string
+	seen := map[string]bool{id: true}
+	for above, exists := tree.parent[id]; exists && !seen[above]; above, exists = tree.parent[above] {
+		seen[above] = true
+		group, known := tree.groups[above]
+		if !known {
+			break
+		}
+		if title := clean(group.Title, maxNameLength); title != "" {
+			trail = append(trail, title)
+		}
+	}
+	slices.Reverse(trail)
+	if title := clean(self.Title, maxNameLength); title != "" {
+		trail = append(trail, title)
+	}
+	path := strings.Join(trail, "/")
+	tree.folder[id] = path
+	return path
 }

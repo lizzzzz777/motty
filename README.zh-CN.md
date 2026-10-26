@@ -73,9 +73,9 @@ win32-input-mode。连字在固定网格内按单元格整形。标签可以重�
 在案就直接连接；未知证书像未知密钥一样弹出指纹确认。主机还可以把本地 ssh-agent
 转发给远端 shell，按主机开关，默认关闭。
 
-主机可以分组、打标签、搜索，也可以从 OpenSSH config、PuTTY、Xshell、MobaXterm
-导入。TOTP/HOTP 种子可以存入保险库并自动填充。密码和私钥口令进入
-AES-256-GCM 保险库，密钥放在系统密钥存储，或由 Argon2id 主密码包裹。
+主机可以分组、打标签、搜索，也可以从 OpenSSH config、PuTTY、Xshell、MobaXterm、
+WindTerm、Electerm 导入。TOTP/HOTP 种子可以存入保险库并自动填充。密码和私钥口令
+进入 AES-256-GCM 保险库，密钥放在系统密钥存储，或由 Argon2id 主密码包裹。
 
 ### 🗂 文件不用另开应用
 

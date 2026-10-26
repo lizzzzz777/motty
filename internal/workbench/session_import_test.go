@@ -105,6 +105,41 @@ func TestImportingSessionsToleratesCancelAndBadFiles(t *testing.T) {
 	}
 }
 
+func TestImportingElectermBookmarksAddsHostsWithTheirNestedGroups(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "bookmarks-2026-10-26.json")
+	content := `{"bookmarkGroups": [
+		{"id": "lab", "title": "Lab", "bookmarkIds": [], "bookmarkGroupIds": ["prod"]},
+		{"id": "prod", "title": "Prod", "bookmarkIds": ["pi"], "bookmarkGroupIds": []}
+	], "bookmarks": [
+		{"id": "pi", "title": "Pi", "host": "pi.local", "port": 22, "username": "me", "type": "ssh", "authType": "password", "password": "secret"}
+	]}`
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := freshOptions(t)
+	options.Keystore = &memKeys{}
+	options.OpenFiles = func(app.OpenFileOptions) ([]string, error) { return []string{file}, nil }
+	state := newTestState(t, options)
+	state.Click(hitImportSessions)
+	state.Click(hitImportElecterm)
+	if len(state.hosts) != 1 {
+		t.Fatalf("hosts %+v", state.hosts)
+	}
+	if host := state.hosts[0]; host.Label != "Pi" || host.Group != "Lab / Prod" || host.Address != "pi.local" || host.User != "me" {
+		t.Fatalf("host = %+v", host)
+	}
+	result := state.hostImportResult
+	if !strings.Contains(result.summary, "Electerm") {
+		t.Fatalf("summary = %q", result.summary)
+	}
+	// Electerm writes passwords into the export in the clear, which is a thing to
+	// be told about rather than the usual "each program encrypts them".
+	warnings := strings.Join(result.warnings[:result.visible], "\n")
+	if !strings.Contains(warnings, "clear text") || strings.Contains(warnings, "each program encrypts") {
+		t.Fatalf("warnings = %q", warnings)
+	}
+}
+
 func TestImportingWindTermSessionsAddsHostsWithTheirGroups(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "user.sessions")
 	content := `[{"session.group":"Lab","session.label":"Pi","session.port":22,"session.protocol":"SSH","session.target":"pi.local"}]`
