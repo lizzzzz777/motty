@@ -31,7 +31,7 @@ func TestSettingsEntriesOpenARealWorkspace(t *testing.T) {
 			{settingsConnection, []string{
 				state.messages.SettingsConnectionTimeout, state.messages.SettingsConnectionKeepAlive, state.messages.SettingsConnectionReconnect,
 			}, []ui.ID{hitSettingsTimeout5, hitSettingsTimeout30, hitSettingsKeepAliveOff, hitSettingsKeepAlive60, hitSettingsReconnectOff, hitSettingsReconnectForever,
-				hitSettingsShareToggle, hitSettingsRestoreOff, hitSettingsRestoreAll}},
+				hitSettingsShareToggle}},
 		} {
 			state.selectSettingsCategory(category.category)
 			// Tall enough for the whole category; a short window scrolls instead.

@@ -172,12 +172,6 @@ type Messages struct {
 	VaultMasterSet                         string
 	VaultMasterRemoved                     string
 	VaultCleared                           string
-	SettingsRestore                        string
-	SettingsRestoreDescription             string
-	SettingsRestoreOff                     string
-	SettingsRestoreActive                  string
-	SettingsRestoreAll                     string
-	SessionRestoreNeedsYou                 string
 	TipSFTPClose                           string
 	TipFiles                               string
 	TipFilesLocal                          string

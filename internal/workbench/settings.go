@@ -292,12 +292,6 @@ func (state *State) clickSettings(id ui.ID) bool {
 	case hitSettingsClipboardAllow:
 		changed = state.terminalClipboard != terminalClipboardAllow
 		state.terminalClipboard = terminalClipboardAllow
-	case hitSettingsRestoreActive:
-		changed = state.setRestoreConnectPolicy(restoreConnectActive)
-	case hitSettingsRestoreOff:
-		changed = state.setRestoreConnectPolicy(restoreConnectOff)
-	case hitSettingsRestoreAll:
-		changed = state.setRestoreConnectPolicy(restoreConnectAll)
 	case hitSettingsShareToggle:
 		if state.shareConnections == shareConnectionsOff {
 			changed = state.setShareConnections(shareConnectionsOn)
@@ -406,14 +400,6 @@ func (state *State) settingsReconnectOptions() [3]components.SegmentOption {
 	}
 }
 
-func (state *State) settingsRestoreOptions() [3]components.SegmentOption {
-	return [...]components.SegmentOption{
-		{ID: hitSettingsRestoreOff, Label: state.messages.SettingsRestoreOff},
-		{ID: hitSettingsRestoreActive, Label: state.messages.SettingsRestoreActive},
-		{ID: hitSettingsRestoreAll, Label: state.messages.SettingsRestoreAll},
-	}
-}
-
 func (state *State) settingsClipboardOptions() [3]components.SegmentOption {
 	return [...]components.SegmentOption{
 		{ID: hitSettingsClipboardBlock, Label: state.messages.SettingsTerminalClipboardBlock},
@@ -458,9 +444,6 @@ func (state *State) settingsKey(event ui.KeyEvent) (ui.EventResult, bool) {
 		next, handled = components.SegmentedControlKeyDown(event.Target, options[:], components.DirectionLTR, event.Key)
 	case hitSettingsClipboardBlock, hitSettingsClipboardAsk, hitSettingsClipboardAllow:
 		options := state.settingsClipboardOptions()
-		next, handled = components.SegmentedControlKeyDown(event.Target, options[:], components.DirectionLTR, event.Key)
-	case hitSettingsRestoreOff, hitSettingsRestoreActive, hitSettingsRestoreAll:
-		options := state.settingsRestoreOptions()
 		next, handled = components.SegmentedControlKeyDown(event.Target, options[:], components.DirectionLTR, event.Key)
 	default:
 		return ui.EventResult{}, false

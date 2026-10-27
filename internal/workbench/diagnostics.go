@@ -137,8 +137,8 @@ func (state *State) diagnosticReport() string {
 	report.Fact("terminal", fmt.Sprintf("%s %s %dpx %q scheme=%s padding=%s scrollback=%d",
 		saved.TerminalOption, saved.TerminalFontFace, saved.TerminalFontSize, saved.TerminalFontFamily, saved.TerminalScheme, saved.TerminalPadding, saved.TerminalScrollback))
 	report.Fact("clipboard", saved.TerminalClipboard)
-	report.Fact("connection", fmt.Sprintf("timeout=%ds keepalive=%ds reconnect=%s restore=%s share=%s",
-		saved.ConnectionTimeoutSeconds, saved.ConnectionKeepAliveSeconds, saved.ConnectionReconnect, saved.RestoreConnect, saved.ShareConnections))
+	report.Fact("connection", fmt.Sprintf("timeout=%ds keepalive=%ds reconnect=%s share=%s",
+		saved.ConnectionTimeoutSeconds, saved.ConnectionKeepAliveSeconds, saved.ConnectionReconnect, saved.ShareConnections))
 	report.Fact("files", fmt.Sprintf("parallel=%d keep-times=%q follow=%q", saved.SFTPParallel, saved.SFTPKeepTimes, saved.SFTPFollow))
 	report.Fact("automatic update check", saved.UpdateCheck != "off")
 	if saved.OutboundProxy != nil {

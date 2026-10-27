@@ -211,9 +211,6 @@ var (
 	hitSettingsCursorToggle     = tree.ID(settingsHits, "settings-cursor-blink")
 	hitSettingsClipboardAsk     = tree.ID(settingsHits, "settings-clipboard-ask")
 	hitSettingsClipboardAllow   = tree.ID(settingsHits, "settings-clipboard-allow")
-	hitSettingsRestoreActive    = tree.ID(settingsHits, "settings-restore-active")
-	hitSettingsRestoreOff       = tree.ID(settingsHits, "settings-restore-off")
-	hitSettingsRestoreAll       = tree.ID(settingsHits, "settings-restore-all")
 	hitSettingsShareToggle      = tree.ID(settingsHits, "settings-share")
 	hitSettingsVaultForget      = tree.ID(settingsHits, "settings-vault-forget")
 	hitSettingsMasterSet        = tree.ID(settingsHits, "settings-master-set")
@@ -498,7 +495,6 @@ type State struct {
 	connectionTimeout   time.Duration
 	connectionKeepAlive time.Duration
 	connectionReconnect reconnectPolicy
-	restoreConnect      restoreConnectPolicy
 	// openStream opens the stream of a Telnet or serial host; tests replace it.
 	openStream func(context.Context, streamRequest) (Shell, error)
 	// dialDesktop opens the remote desktop of a VNC host; tests replace it.
@@ -525,7 +521,6 @@ type State struct {
 	shareConnections  shareConnectionsPolicy
 	tooltip           components.HoverTooltip
 	selectTypeahead   selectTypeahead
-	restorePending    bool // restored tabs have not yet been connected (see connectRestoredSessions)
 	terminalClipboard terminalClipboardPolicy
 	// terminalCursorSteady keeps the terminal cursor from blinking.
 	terminalCursorSteady bool
@@ -757,10 +752,6 @@ func New(options Options) *State {
 	if report.outcome == loadOK && err == nil {
 		backupState(state.options.StatePath, saved)
 	}
-	// Dialing waits for the first Wake: the window does not exist yet, so the
-	// connection's wake-ups would have nowhere to go and its progress would
-	// never reach the screen.
-	state.restorePending = state.restoreConnect != restoreConnectOff
 	switch {
 	case err != nil:
 		state.status = fmt.Sprintf(state.messages.StatusSaveFailedFmt, err)

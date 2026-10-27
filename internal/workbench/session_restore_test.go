@@ -12,8 +12,6 @@ import (
 func TestSessionsRestoreWithoutDialingAndReconnectOnEnter(t *testing.T) {
 	world, options := newWorld(t)
 	first := newTestState(t, options)
-	// This test is about restoring without dialing; what restore connects has its own tests.
-	first.restoreConnect = restoreConnectOff
 	openHost(first)
 	first.Click(hitHosts)
 	first.Click(hitHostList.At(2))
@@ -91,6 +89,51 @@ func TestSessionsRestoreWithoutDialingAndReconnectOnEnter(t *testing.T) {
 	}
 }
 
+func TestRestoreNeverDialsEvenWithALegacyRestorePolicy(t *testing.T) {
+	// Reopening the app must not touch the network: a saved tab is metadata until
+	// the user connects it. State files from older versions may still carry the
+	// removed restore_connect choice, so every value is tried.
+	for _, policy := range []string{"", "active", "all", "off"} {
+		t.Run("policy_"+policy, func(t *testing.T) {
+			world, options := newWorld(t)
+			first := newTestState(t, options)
+			openHost(first)
+			first.Click(hitHosts)
+			first.Click(hitHostList.At(2))
+			openHost(first)
+			if len(world.conns) != 2 {
+				t.Fatalf("setup dialed %d connections, want 2", len(world.conns))
+			}
+			first.save()
+
+			saved, _, err := loadState(options.StatePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			saved.RestoreConnect = policy
+			if err := saveState(options.StatePath, saved); err != nil {
+				t.Fatal(err)
+			}
+			if reloaded, _, err := loadState(options.StatePath); err != nil || reloaded.RestoreConnect != policy {
+				t.Fatalf("legacy restore_connect=%q did not survive the fixture: %q, %v", policy, reloaded.RestoreConnect, err)
+			}
+
+			restored := newTestState(t, options)
+			restored.Wake()
+			restored.Wake()
+			if len(world.conns) != 2 {
+				t.Fatalf("restart with restore_connect=%q dialed %d connections", policy, len(world.conns)-2)
+			}
+			for index := range restored.sessions {
+				session := &restored.sessions[index]
+				if session.conn != nil || !session.restored || session.phase != sshconn.PhaseClosed {
+					t.Fatalf("restored tab %d was connected: %+v", session.ID, session)
+				}
+			}
+		})
+	}
+}
+
 func TestWorkspaceAndClosedTabsPersist(t *testing.T) {
 	_, options := newWorld(t)
 	first := newTestState(t, options)
@@ -120,8 +163,6 @@ func TestWorkspaceAndClosedTabsPersist(t *testing.T) {
 func TestTypedSessionRestoresAsAnEphemeralTarget(t *testing.T) {
 	world, options := newWorld(t)
 	first := newTestState(t, options)
-	// This test is about restoring without dialing; what restore connects has its own tests.
-	first.restoreConnect = restoreConnectOff
 	first.search.Insert("guest@typed.example.com:2222")
 	first.Click(hitConnect)
 	if len(world.conns) != 1 || len(first.sessions) != 1 || first.sessions[0].HostID != 0 {
@@ -164,6 +205,61 @@ func TestRestoreSessionsSkipsInvalidStaleDuplicateAndExcessEntries(t *testing.T)
 	}
 	if state.activeSessionID != state.sessions[0].ID || state.activeSection != sectionTerminal {
 		t.Fatalf("active=%d section=%d", state.activeSessionID, state.activeSection)
+	}
+}
+
+// A restored tab's page has no terminal to hold the keyboard: Enter on it
+// reconnects, Command+W closes the tab, and both keys are shown on the page.
+func TestRestoredPageTakesEnterAndCommandWAndShowsTheKeys(t *testing.T) {
+	_, options := newWorld(t)
+	first := newTestState(t, options)
+	openHost(first)
+	first.save()
+
+	state := newTestState(t, options)
+	session, _ := state.sessionByIDPointer(state.activeSessionID)
+	if !session.restored {
+		t.Fatal("setup: the session was not restored")
+	}
+	canvas, texts := paintedTexts(state)
+	if !contains(texts, "↵") || !contains(texts, "W") {
+		t.Fatalf("the page does not show its keys: %q", texts)
+	}
+	if _, ok := hitByID(canvas, hitConnRetry); !ok {
+		t.Fatal("no Connect button")
+	}
+
+	if result := state.Key(ui.KeyEvent{Key: ui.KeyEnter}); !result.Handled || session.conn == nil {
+		t.Fatalf("Enter on the restored page: %+v conn=%v", result, session.conn != nil)
+	}
+
+	second := newTestState(t, options)
+	tabs := len(second.deck.Workspaces(nil))
+	if result := commandW(second); !result.Handled || len(second.deck.Workspaces(nil)) != tabs-1 {
+		t.Fatalf("Command+W on the restored page: %+v tabs %d→%d", result, tabs, len(second.deck.Workspaces(nil)))
+	}
+}
+
+// Picking a restored tab leaves the keyboard on that tab, not on the page, and
+// Enter there must still connect: it used to need a click on the page first.
+func TestEnterOnTheActiveTabConnectsARestoredPage(t *testing.T) {
+	_, options := newWorld(t)
+	first := newTestState(t, options)
+	openHost(first)
+	first.save()
+
+	state := newTestState(t, options)
+	session, _ := state.sessionByIDPointer(state.activeSessionID)
+	if !session.restored {
+		t.Fatal("setup: the session was not restored")
+	}
+	other := hitTabList.At(int(state.deck.ActiveWorkspace()) + 1)
+	if result := state.Key(ui.KeyEvent{Key: ui.KeyEnter, Target: other}); result.Handled && session.conn != nil {
+		t.Fatal("Enter on some other tab must not connect this page")
+	}
+	active := hitTabList.At(int(state.deck.ActiveWorkspace()))
+	if result := state.Key(ui.KeyEvent{Key: ui.KeyEnter, Target: active}); !result.Handled || session.conn == nil {
+		t.Fatalf("Enter on the active tab: %+v conn=%v", result, session.conn != nil)
 	}
 }
 

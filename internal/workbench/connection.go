@@ -57,6 +57,38 @@ type sharer interface {
 	Share(notify func()) (Connection, error)
 }
 
+// shareConnectionsPolicy is whether a new tab on a host that another tab of the
+// window is already connected to borrows that connection. It is the zero value,
+// on: a second shell then needs no handshake, no host-key check and no password.
+type shareConnectionsPolicy uint8
+
+const (
+	shareConnectionsOn shareConnectionsPolicy = iota
+	shareConnectionsOff
+)
+
+func (policy shareConnectionsPolicy) String() string {
+	if policy == shareConnectionsOff {
+		return "off"
+	}
+	return "on"
+}
+
+func shareConnectionsPolicyFromString(value string) shareConnectionsPolicy {
+	if value == shareConnectionsOff.String() {
+		return shareConnectionsOff
+	}
+	return shareConnectionsOn
+}
+
+func (state *State) setShareConnections(policy shareConnectionsPolicy) bool {
+	if state.shareConnections == policy {
+		return false
+	}
+	state.shareConnections = policy
+	return true
+}
+
 // realConn adapts *sshconn.Conn, whose OpenShell returns the concrete shell
 // type, to Connection.
 type realConn struct{ *sshconn.Conn }
@@ -394,7 +426,6 @@ func (state *State) startConnectionMode(session *Session, host Host, automatic b
 	}
 	session.established = false
 	session.restored = false
-	session.autoRestore, session.restoreNote = false, ""
 	session.host = host
 	session.endpoint = sshconn.Endpoint{Host: host.Address, Port: host.Port, User: state.login(host)}
 	session.role = sshconn.EndpointTarget
@@ -552,10 +583,6 @@ func (state *State) Wake() {
 			state.autoSync()
 		}
 	}
-	if state.restorePending {
-		state.restorePending = false
-		state.connectRestoredSessions()
-	}
 	state.advanceReconnects()
 	findNow := state.now()
 	for index := range state.sessions {
@@ -588,17 +615,6 @@ func (state *State) Wake() {
 // apply reads one status into a session: its dot, its busy flag, and the next
 // lines of its story on the screen.
 func (state *State) apply(session *Session, status sshconn.Status) {
-	if session.autoRestore {
-		if isPromptPhase(status.Phase) && !state.canAutofill(status) {
-			// Restore only connects what needs no one; a question for the user
-			// returns the tab to its page instead of opening a dialog.
-			state.abandonRestoredConnect(session)
-			return
-		}
-		if status.Phase == sshconn.PhaseConnected || status.Phase == sshconn.PhaseFailed || status.Phase == sshconn.PhaseClosed {
-			session.autoRestore = false
-		}
-	}
 	previousPhase := session.phase
 	session.version = status.Version
 	session.phase = status.Phase

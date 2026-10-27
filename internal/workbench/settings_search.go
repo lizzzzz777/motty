@@ -150,7 +150,6 @@ func (state *State) eachSettingsEntry(add func(settingsEntry)) {
 	row(settingsConnection, m.SettingsConnectionKeepAlive, m.SettingsConnectionKeepAliveDescription)
 	row(settingsConnection, m.SettingsConnectionReconnect, m.SettingsConnectionReconnectDescription)
 	row(settingsConnection, m.SettingsShare, m.SettingsShareDescription)
-	row(settingsConnection, m.SettingsRestore, m.SettingsRestoreDescription)
 	row(settingsConnection, tools.ProxyRow, tools.ProxyDescriptionNone)
 	row(settingsConnection, state.messages.SSHSync.ToggleRow, state.messages.SSHSync.ToggleDescription)
 	row(settingsConnection, state.messages.SSHSync.FileRow, "")

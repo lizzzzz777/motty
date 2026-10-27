@@ -102,6 +102,11 @@ func (session *Session) quietOK() bool {
 	return !session.failed() && !isPromptPhase(session.phase)
 }
 
+// isPromptPhase reports whether the connection is waiting for the user.
+func isPromptPhase(phase sshconn.Phase) bool {
+	return phase == sshconn.PhaseHostKeyPrompt || phase == sshconn.PhaseKeyPassphrasePrompt || phase == sshconn.PhasePasswordPrompt
+}
+
 // describe writes what each row of the page says, in the current language. It
 // runs when the connection moves on and when the language changes, so painting
 // only reads the result.
@@ -694,9 +699,6 @@ func (state *State) paintRestoredSessionPage(canvas *ui.Canvas, size ui.Size, se
 	title := elide(canvas, session.Title, 18, ui.WeightSemibold, labelMax)
 	address := elide(canvas, session.Address, metrics.FontSizeS, ui.WeightRegular, labelMax)
 	body := messages.SessionRestoredBody
-	if session.restoreNote != "" {
-		body = session.restoreNote
-	}
 	textWidth := min(max(area.Width-64, 200), 440)
 	lines := canvas.WrapLines(state.wrapped[:0], body, metrics.FontSizeM, ui.WeightRegular, textWidth, 3)
 
@@ -740,6 +742,26 @@ func (state *State) paintRestoredSessionPage(canvas *ui.Canvas, size ui.Size, se
 
 	state.paintKeyHint(canvas, closeKeysBox.Rect(), closeHint)
 	state.paintKeyHint(canvas, connectKeysBox.Rect(), connectHint)
+}
+
+// restoredPageKey lets Enter bring a restored tab back from its page. Nothing on
+// that page has the keyboard (it has no terminal yet), so the key is the page's.
+func (state *State) restoredPageKey(event ui.KeyEvent) (ui.EventResult, bool) {
+	if event.Key != ui.KeyEnter || event.Repeat || state.modal != modalNone || state.activeSection != sectionTerminal {
+		return ui.EventResult{}, false
+	}
+	// Choosing a tab leaves the keyboard on that tab, and a live terminal takes it
+	// from there by itself. This page has nothing to take it with, so Enter on the
+	// tab that is already showing it means the page's one action.
+	if !event.Target.IsZero() && event.Target != hitTabList.At(int(state.deck.ActiveWorkspace())) {
+		return ui.EventResult{}, false
+	}
+	session, ok := state.sessionByIDPointer(state.activeSessionID)
+	if !ok || !session.restored || session.term != nil {
+		return ui.EventResult{}, false
+	}
+	state.reconnect(session)
+	return ui.EventResult{Handled: true, Repaint: true}, true
 }
 
 // keyHintWidth is how wide the keycaps of a hint are, side by side.

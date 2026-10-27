@@ -37,7 +37,6 @@ type savedState struct {
 	ConnectionTimeoutSeconds   int                 `json:"connection_timeout_seconds,omitempty"`
 	ConnectionKeepAliveSeconds int                 `json:"connection_keepalive_seconds,omitempty"`
 	ConnectionReconnect        string              `json:"connection_reconnect,omitempty"`
-	RestoreConnect             string              `json:"restore_connect,omitempty"`
 	ShareConnections           string              `json:"share_connections,omitempty"`
 	TerminalClipboard          string              `json:"terminal_clipboard,omitempty"`
 	TerminalCursorSteady       bool                `json:"terminal_cursor_steady,omitempty"`
@@ -81,6 +80,9 @@ type savedState struct {
 	// Provider collections are nil while the assistant's database is unread.
 	AIProviders    *[]savedAIProvider `json:"ai_providers,omitempty"`
 	AICLIProviders *[]savedAIProvider `json:"ai_cli_providers,omitempty"`
+	// RestoreConnect is the removed "on restore" policy. Older state files may
+	// still carry it; it is read and ignored so a restart never dials.
+	RestoreConnect string `json:"restore_connect,omitempty"`
 }
 
 type savedOutboundProxy struct {
@@ -313,7 +315,6 @@ func (state *State) snapshot() savedState {
 		ConnectionTimeoutSeconds:   int(state.connectionTimeout / time.Second),
 		ConnectionKeepAliveSeconds: int(state.connectionKeepAlive / time.Second),
 		ConnectionReconnect:        state.connectionReconnect.String(),
-		RestoreConnect:             state.restoreConnect.String(),
 		ShareConnections:           state.shareConnections.String(),
 		TerminalClipboard:          state.terminalClipboard.String(),
 		TerminalCursorSteady:       state.terminalCursorSteady,
@@ -527,7 +528,6 @@ func (state *State) restoreLocal(saved savedState) {
 			state.setTerminalFontFace(face)
 		}
 	}
-	state.restoreConnect = restoreConnectPolicyFromString(saved.RestoreConnect)
 	state.shareConnections = shareConnectionsPolicyFromString(saved.ShareConnections)
 	state.ai.panelWidth = saved.AIPanelWidth
 	state.restoreIdentities(saved.IdentityFiles)

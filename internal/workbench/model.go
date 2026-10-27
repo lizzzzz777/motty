@@ -127,11 +127,9 @@ type Session struct {
 	showLog       bool
 	serverVersion string
 	method        string
-	err           error  // why the connection or its shell failed
-	shellFailed   bool   // err came from asking for the shell
-	restored      bool   // tab metadata was restored without opening a connection
-	autoRestore   bool   // the connection in progress was started by restoring the session
-	restoreNote   string // why restore left this tab unconnected, in the current language
+	err           error // why the connection or its shell failed
+	shellFailed   bool  // err came from asking for the shell
+	restored      bool  // tab metadata was restored without opening a connection
 	details       [stageCount]string
 	failure       string
 	elapsed       string

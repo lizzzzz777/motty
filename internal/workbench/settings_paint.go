@@ -326,21 +326,12 @@ func (state *State) paintConnectionSettings(page *settingsPage) {
 	case reconnectForever:
 		selectedReconnect = hitSettingsReconnectForever
 	}
-	restore := state.settingsRestoreOptions()
-	selectedRestore := hitSettingsRestoreActive
-	switch state.restoreConnect {
-	case restoreConnectOff:
-		selectedRestore = hitSettingsRestoreOff
-	case restoreConnectAll:
-		selectedRestore = hitSettingsRestoreAll
-	}
 	page.groups(func() {
 		page.group("", func() {
 			page.row(messages.SettingsConnectionTimeout, messages.SettingsConnectionTimeoutDescription, timeout[:], selectedTimeout)
 			page.row(messages.SettingsConnectionKeepAlive, messages.SettingsConnectionKeepAliveDescription, keepAlive[:], selectedKeepAlive)
 			page.row(messages.SettingsConnectionReconnect, messages.SettingsConnectionReconnectDescription, reconnect[:], selectedReconnect)
 			page.toggleRow(messages.SettingsShare, messages.SettingsShareDescription, state.shareConnections != shareConnectionsOff, hitSettingsShareToggle)
-			page.row(messages.SettingsRestore, messages.SettingsRestoreDescription, restore[:], selectedRestore)
 			state.paintOutboundProxyRow(page)
 		})
 		state.paintSSHSyncSettings(page)
